@@ -1,0 +1,5 @@
+lancer le code jusqu'ici le .py sur GPU
+
+problème de dataset trop grand
+
+après il faudra trouver une façon de reconstruire le texte avec les masked entities voir ChatGPT
