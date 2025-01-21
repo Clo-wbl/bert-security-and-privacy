@@ -94,9 +94,9 @@ tree = ET.ElementTree(root)
 # Write the ElementTree object to an XML file
 tree.write("deid_without_ids.xml", encoding="utf-8", xml_declaration=True)
 
-# Print the content of the XML file
-with open("deid_without_ids.xml", "r") as f:
-    data = f.read()
+# # Print the content of the XML file
+# with open("deid_without_ids.xml", "r") as f:
+#     data = f.read()
 
 # %% [markdown]
 # ### Split texts
@@ -195,26 +195,6 @@ def find_entities_to_mask(text, labels_to_mask, entities_to_mask, entities_to_ke
 find_entities_to_mask(ner_results, labels_to_mask, entities_to_mask, entities_to_keep)
 
 print("entities to mask : ", entities_to_mask)
-# print("----------------------------------")
-# print("entities to keep : ", entities_to_keep)
-
-# # Fonction pour masquer les entités
-# def mask_entities(text, labels_to_mask):
-#     for ent in text:
-#         if ent.label_ in entities_to_mask:
-#             masked_text = masked_text.replace(ent.word, "*****")
-#         if pattern_date.match(ent.word):
-#             masked_text = masked_text.replace(ent.word, "DATE")
-#     return masked_text
-
-# # Mask the entities
-# masked_text = mask_entities(ner_results, entities_to_mask)
-
-# # Print the masked text
-# print(masked_text)
-
-# masked_xml = nlp(masked_text)
-#displacy.serve(masked_xml, style="ent")
 
 # %%
 def mask_entities_by_tokens(text, entities_to_mask):
@@ -244,77 +224,23 @@ def mask_entities_by_tokens(text, entities_to_mask):
 masked_text = mask_entities_by_tokens(record_str, entities_to_mask)
 
 # Afficher le résultat
-print("Texte avec les entités masquées :")
+print("Text with masked entities")
 print(masked_text[:1000])
 
 
-# %%
-# def mask_entities_in_text(text, entities_to_mask):
-#     """
-#     Masque les mots correspondants aux entités dans le texte en les remplaçant par des ****.
-    
-#     :param text: Texte original à modifier.
-#     :param entities_to_mask: Liste des entités à masquer, chaque entité est un dictionnaire avec un champ 'word'.
-#     :return: Texte modifié avec les entités masquées.
-#     """
-#     # Parcourir chaque entité et remplacer les mots correspondants dans le texte
-#     for entity in entities_to_mask:
-#         word = entity.get('word', '').strip()  # Récupérer le mot de l'entité
-#         if word:
-#             # Remplacer toutes les occurrences du mot par des **** (longueur adaptée)
-#             mask = '*' * len(word)
-#             text = text.replace(word, mask)
-#     return text
-
-# # Appliquer la fonction pour masquer les entités
-# masked_text = mask_entities_in_text(record_str, entities_to_mask)
-
-# # Afficher le résultat
-# print("Texte avec les entités masquées :")
-# print(masked_text[:1000])
-
+# %% [markdown]
+# ### Tranform back to XML
 
 # %%
-# def mask_entities(text, ner_results, labels_to_mask):
-#     # Trier les entités par position de départ pour garantir un ordre correct
-#     ner_results_sorted = sorted(ner_results, key=lambda x: x['start'])
-    
-#     # Initialiser une liste pour le texte reconstruit
-#     masked_text = ""
-    
-#     # Position actuelle dans le texte
-#     current_position = 0
+import xml.etree.ElementTree as ET
 
-#     # Parcourir chaque entité détectée
-#     for entity in ner_results_sorted:
-#         start = entity['start']
-#         end = entity['end']
-        
-#         # # Ajouter le texte entre la position actuelle et le début de l'entité
-#         # if current_position < start:
-#         #     masked_text += text[current_position:start]
-        
-#         # Ajouter "****" si l'entité doit être masquée, sinon ajouter le texte de l'entité
-#         if entity['entity'] in labels_to_mask:
-#             masked_text += "****"
-#         else:
-#             masked_text += text[start:end]
-        
-#         # Mettre à jour la position actuelle
-#         current_position = end
-    
-#     # Ajouter le texte restant après la dernière entité
-#     if current_position < len(text):
-#         masked_text += text[current_position:]
-    
-#     return masked_text
+# Parse the XML string
+root = ET.fromstring(masked_text)
 
+# Create an ElementTree object
+tree = ET.ElementTree(root)
 
-# # Texte original
-# original_text = "This is a sample text where 12/09/2024 and John's location are mentioned."
-
-# # Appliquer la fonction
-# masked_text = mask_entities(original_text, ner_results, labels_to_mask)
-
+# Write the ElementTree object to an XML file
+tree.write("deid_masked.xml", encoding="utf-8", xml_declaration=True)
 
 
