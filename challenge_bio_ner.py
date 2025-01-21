@@ -243,4 +243,169 @@ tree = ET.ElementTree(root)
 # Write the ElementTree object to an XML file
 tree.write("deid_masked.xml", encoding="utf-8", xml_declaration=True)
 
+# %% [markdown]
+# # Finetuning BERT
+
+# %%
+# %pip install datasets evaluate transformers[sentencepiece]
+# %pip install accelerate
+# To run the training on TPU, you will need to uncomment the following line:
+# !pip install cloud-tpu-client==0.10 torch==1.9.0 https://storage.googleapis.com/tpu-pytorch/wheels/torch_xla-1.9-cp37-cp37m-linux_x86_64.whl
+# !apt install git-lfs
+
+# %%
+
+from bs4 import BeautifulSoup
+from datasets import Dataset, DatasetDict
+from transformers import AutoTokenizer, AutoModelForMaskedLM, DataCollatorForLanguageModeling, Trainer, TrainingArguments
+import torch
+import collections
+import numpy as np
+from transformers import default_data_collator
+import math
+
+# %% [markdown]
+# ## Step 1: Parse the XML file with BeautifulSoup
+
+# %%
+def parse_xml(file_path):
+    with open(file_path, 'r') as f:
+        data = f.read()
+
+    bs_data = BeautifulSoup(data, "lxml-xml")  # Use lxml-xml parser
+
+    # Print the structure of the XML to verify tag names
+    # print(bs_data.prettify())
+
+    parsed_data = []
+    for item in bs_data.find_all('RECORD'):  # Adjust the tag name as per your XML structure
+        text = item.find('TEXT').text
+        label = item.find("SMOKING",).get("STATUS")
+        parsed_data.append({'text': text, 'label': label})
+
+    return parsed_data
+
+# %%
+# Step 2: Convert to Dictionary Format
+def convert_to_dict_format(data):
+    dict_format = {'text': [], 'label': []}
+    for entry in data:
+        dict_format['text'].append(entry['text'])
+        dict_format['label'].append(entry['label'])
+    return dict_format
+
+# %%
+# Step 3: Create a dataset from the parsed data
+def create_dataset(data):
+    return Dataset.from_dict(data)
+
+# File path to your XML file
+file_path = 'deid_masked.xml'
+
+# Parse the XML file
+parsed_data = parse_xml(file_path)
+print(f"Parsed data size: {len(parsed_data)}")  # Debugging statement
+
+# Convert to dictionary format
+dict_format_data = convert_to_dict_format(parsed_data)
+print(f"Dictionary format data size: {len(dict_format_data['text'])}")  # Debugging statement
+
+# Create a dataset
+dataset = create_dataset(dict_format_data)
+
+# Check the dataset size
+print(f"Dataset size: {len(dataset)}")
+
+# Shuffle and select samples
+dataset_size = len(dataset)
+if dataset_size > 0:
+    sample = dataset.shuffle(seed=42).select(range(min(3, dataset_size)))
+
+    # Print the samples
+    for row in sample:
+        # print(f"\n'>>> Review: {row['text']}'")
+        print(f"'>>> Label: {row['label']}'")
+else:
+    print("Dataset is empty.")
+
+
+# %% [markdown]
+# ## Split the dataset into train and test
+
+# %%
+if dataset_size > 0:
+    train_test_split = dataset.train_test_split(test_size=0.1)
+    train_dataset = train_test_split['train']
+    test_dataset = train_test_split['test']
+
+    # Step 4: Tokenize the dataset
+    model_checkpoint = "distilbert-base-uncased"
+    tokenizer = AutoTokenizer.from_pretrained(model_checkpoint)
+
+    def tokenize_function(examples):
+        result = tokenizer(examples["text"], padding=True, truncation=True)
+        # if tokenizer.is_fast:
+        #     result["word_ids"] = [result.word_ids(i) for i in range(len(result["input_ids"]))]
+        return result
+
+    # Use batched=True to activate fast multithreading!
+    tokenized_datasets = DatasetDict({
+        'train': train_dataset.map(tokenize_function, batched=True, remove_columns=["text", "label"]),
+        'test': test_dataset.map(tokenize_function, batched=True, remove_columns=["text", "label"])
+    })
+
+
+    # Step 5: Group texts into chunks
+    chunk_size = 128
+
+    def group_texts(examples):
+        # Concatenate all texts
+        concatenated_examples = {k: sum(examples[k], []) for k in examples.keys()}
+        # Compute length of concatenated texts
+        total_length = len(concatenated_examples[list(examples.keys())[0]])
+        # We drop the last chunk if it's smaller than chunk_size
+        total_length = (total_length // chunk_size) * chunk_size
+        # Split by chunks of max_len
+        result = {
+            k: [t[i : i + chunk_size] for i in range(0, total_length, chunk_size)]
+            for k, t in concatenated_examples.items()
+        }
+        # Create a new labels column
+        result["labels"] = result["input_ids"].copy()
+        return result
+
+    lm_datasets = tokenized_datasets.map(group_texts, batched=True)
+
+    # Step 6: Fine-tune the model
+    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=0.15)
+
+    model = AutoModelForMaskedLM.from_pretrained(model_checkpoint)
+
+    training_args = TrainingArguments(
+        output_dir="./results",
+        evaluation_strategy="epoch",
+        learning_rate=2e-5,
+        per_device_train_batch_size=16,
+        per_device_eval_batch_size=16,
+        num_train_epochs=3,
+        weight_decay=0.01,
+        remove_unused_columns=False,  # Ensure this is set to False
+    )
+
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=lm_datasets["train"],
+        eval_dataset=lm_datasets["test"],
+        data_collator=data_collator,
+    )
+    eval_results = trainer.evaluate()
+    print(f">>> Perplexity: {math.exp(eval_results['eval_loss']):.2f}")
+    trainer.train()
+    # Evaluate the model
+    eval_results = trainer.evaluate()
+    print(f">>> Perplexity: {math.exp(eval_results['eval_loss']):.2f}")
+else:
+    print("Dataset is empty. Cannot proceed with training.")
+
 
