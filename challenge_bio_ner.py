@@ -1,7 +1,7 @@
 # %% [markdown]
 # ### General Requirements 
 
-# # %%
+# %%
 # %pip install beautifulsoup4
 # %pip install lxml
 # %pip install spacy
@@ -34,7 +34,7 @@ Bs_data = BeautifulSoup(data, "xml")
 # of the first instance of the tag
 b_type = Bs_data.find_all('PHI', {'TYPE':'HOSPITAL'})
 
-print(b_type)
+# print(b_type)
 
 # %% [markdown]
 # ### Reduce dataset
@@ -53,18 +53,6 @@ for record in less_records:
     new_root.append(record)
 
 record_test = new_root
-
-# %% [markdown]
-# ### Prepare as text
-
-# %%
-from spacy import displacy
-import re
-
-# xml_text = Bs_data.get_text()
-# record_test = Bs_data.find('ROOT')
-
-print(record_test)
 
 # %% [markdown]
 # ### Remove IDs if needed
@@ -90,7 +78,6 @@ def remove_ids(soup):
 # %%
 record_test = remove_ids(record_test) # Remove IDs from the XML data
 record_str = str(record_test)
-print(record_str)
 
 # %% [markdown]
 # ### Retransform to xml file
@@ -110,7 +97,6 @@ tree.write("deid_without_ids.xml", encoding="utf-8", xml_declaration=True)
 # Print the content of the XML file
 with open("deid_without_ids.xml", "r") as f:
     data = f.read()
-print(data)
 
 # %% [markdown]
 # ### Split texts
@@ -177,12 +163,16 @@ ner_pipe = pipeline("ner", model=bio_ner_model, tokenizer=tokenizer)
 ner_results = []
 for chunk in chunks:
     ner_results.extend(ner_pipe(chunk))
-print(ner_results)
+
+# %%
+print(ner_results[:10])
 
 # %% [markdown]
 # ### Mask choosen entities
 
 # %%
+
+import re
 # Define the entities to mask
 labels_to_mask = ["I-AREA", "B-AREA",
                      "B-DATE", "I-DATE",
@@ -205,8 +195,8 @@ def find_entities_to_mask(text, labels_to_mask, entities_to_mask, entities_to_ke
 find_entities_to_mask(ner_results, labels_to_mask, entities_to_mask, entities_to_keep)
 
 print("entities to mask : ", entities_to_mask)
-print("----------------------------------")
-print("entities to keep : ", entities_to_keep)
+# print("----------------------------------")
+# print("entities to keep : ", entities_to_keep)
 
 # # Fonction pour masquer les entités
 # def mask_entities(text, labels_to_mask):
@@ -227,50 +217,104 @@ print("entities to keep : ", entities_to_keep)
 #displacy.serve(masked_xml, style="ent")
 
 # %%
-def mask_entities(text, ner_results, labels_to_mask):
-    # Trier les entités par position de départ pour garantir un ordre correct
-    ner_results_sorted = sorted(ner_results, key=lambda x: x['start'])
+def mask_entities_by_tokens(text, entities_to_mask):
+    """
+    Masque les mots dans le texte si leurs tokens correspondent aux entités à masquer.
     
-    # Initialiser une liste pour le texte reconstruit
-    masked_text = ""
+    :param text: Texte original à modifier.
+    :param entities_to_mask: Liste des entités à masquer, chaque entité est un dictionnaire avec un champ 'word'.
+    :return: Texte modifié avec les entités masquées.
+    """
+    # Créer un ensemble des mots à masquer pour une recherche rapide
+    words_to_mask = {entity['word'].strip() for entity in entities_to_mask if 'word' in entity}
     
-    # Position actuelle dans le texte
-    current_position = 0
+    # Tokeniser le texte par des espaces (simple tokenisation)
+    tokens = text.split()
+    
+    # Masquer les tokens correspondant aux mots à masquer
+    masked_tokens = [
+        '*' * len(token) if token in words_to_mask else token
+        for token in tokens
+    ]
+    
+    # Rejoindre les tokens masqués pour reformer le texte
+    return ' '.join(masked_tokens)
 
-    # Parcourir chaque entité détectée
-    for entity in ner_results_sorted:
-        start = entity['start']
-        end = entity['end']
+# Appliquer la fonction pour masquer les entités
+masked_text = mask_entities_by_tokens(record_str, entities_to_mask)
+
+# Afficher le résultat
+print("Texte avec les entités masquées :")
+print(masked_text[:1000])
+
+
+# %%
+# def mask_entities_in_text(text, entities_to_mask):
+#     """
+#     Masque les mots correspondants aux entités dans le texte en les remplaçant par des ****.
+    
+#     :param text: Texte original à modifier.
+#     :param entities_to_mask: Liste des entités à masquer, chaque entité est un dictionnaire avec un champ 'word'.
+#     :return: Texte modifié avec les entités masquées.
+#     """
+#     # Parcourir chaque entité et remplacer les mots correspondants dans le texte
+#     for entity in entities_to_mask:
+#         word = entity.get('word', '').strip()  # Récupérer le mot de l'entité
+#         if word:
+#             # Remplacer toutes les occurrences du mot par des **** (longueur adaptée)
+#             mask = '*' * len(word)
+#             text = text.replace(word, mask)
+#     return text
+
+# # Appliquer la fonction pour masquer les entités
+# masked_text = mask_entities_in_text(record_str, entities_to_mask)
+
+# # Afficher le résultat
+# print("Texte avec les entités masquées :")
+# print(masked_text[:1000])
+
+
+# %%
+# def mask_entities(text, ner_results, labels_to_mask):
+#     # Trier les entités par position de départ pour garantir un ordre correct
+#     ner_results_sorted = sorted(ner_results, key=lambda x: x['start'])
+    
+#     # Initialiser une liste pour le texte reconstruit
+#     masked_text = ""
+    
+#     # Position actuelle dans le texte
+#     current_position = 0
+
+#     # Parcourir chaque entité détectée
+#     for entity in ner_results_sorted:
+#         start = entity['start']
+#         end = entity['end']
         
-        # Ajouter le texte entre la position actuelle et le début de l'entité
-        if current_position < start:
-            masked_text += text[current_position:start]
+#         # # Ajouter le texte entre la position actuelle et le début de l'entité
+#         # if current_position < start:
+#         #     masked_text += text[current_position:start]
         
-        # Ajouter "****" si l'entité doit être masquée, sinon ajouter le texte de l'entité
-        if entity['entity'] in labels_to_mask:
-            masked_text += "****"
-        else:
-            masked_text += text[start:end]
+#         # Ajouter "****" si l'entité doit être masquée, sinon ajouter le texte de l'entité
+#         if entity['entity'] in labels_to_mask:
+#             masked_text += "****"
+#         else:
+#             masked_text += text[start:end]
         
-        # Mettre à jour la position actuelle
-        current_position = end
+#         # Mettre à jour la position actuelle
+#         current_position = end
     
-    # Ajouter le texte restant après la dernière entité
-    if current_position < len(text):
-        masked_text += text[current_position:]
+#     # Ajouter le texte restant après la dernière entité
+#     if current_position < len(text):
+#         masked_text += text[current_position:]
     
-    return masked_text
+#     return masked_text
 
 
-# Texte original
-original_text = "This is a sample text where 12/09/2024 and John's location are mentioned."
+# # Texte original
+# original_text = "This is a sample text where 12/09/2024 and John's location are mentioned."
 
-# Appliquer la fonction
-masked_text = mask_entities(original_text, ner_results, labels_to_mask)
+# # Appliquer la fonction
+# masked_text = mask_entities(original_text, ner_results, labels_to_mask)
 
-# Résultat
-print("--------------------------------------------")
-print("Texte reconstruit avec entités masquées :")
-print(masked_text)
 
 
